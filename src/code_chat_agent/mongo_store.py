@@ -207,10 +207,12 @@ class MongoDBStore:
         """
         query_embedding = self.embeddings.embed_text(query)
         try:
-            return self._native_hybrid_search(query_embedding, query, limit, alpha, language_filter)
+            results = self._native_hybrid_search(query_embedding, query, limit, alpha, language_filter)
+            logger.info("✓ Using native MongoDB hybrid search ($rankFusion), alpha=%.2f", alpha)
+            return results
         except PyMongoError as e:
             if "rankFusion" in str(e) or "QueryFeatureNotAllowed" in str(e):
-                logger.info("$rankFusion not available, using manual hybrid search")
+                logger.info("$rankFusion not available, using manual hybrid search (alpha=%.2f)", alpha)
                 return self._manual_hybrid_search(query_embedding, query, limit, alpha, language_filter)
             raise
 

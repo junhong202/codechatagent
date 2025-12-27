@@ -59,8 +59,12 @@ def index(ctx, repo_paths: tuple[str, ...]) -> None:
         ) as agent:
             agent.index_repositories([Path(p) for p in repo_paths])
             
-            click.echo(f"✓ Successfully indexed all repositories")
-            click.echo(f"  Data stored in Weaviate")
+            click.echo("✓ Successfully indexed all repositories")
+            backend = ctx.obj.get("backend", "mongodb")
+            if backend == "weaviate":
+                click.echo("  Data stored in Weaviate")
+            else:
+                click.echo("  Data stored in MongoDB")
     except Exception as e:
         click.echo(f"✗ Error indexing repositories: {e}", err=True)
         raise SystemExit(1)

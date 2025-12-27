@@ -18,13 +18,14 @@ services:
       retries: 20
 
   mongodb:
-    image: mongodb/mongodb-atlas-local:8.0.0
+    image: mongodb/mongodb-atlas-local:latest
     container_name: mongodb
     hostname: localhost
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+      - ./configdb:/data/configdb
     environment:
       - DO_NOT_TRACK=1
       - MONGODB_INITDB_ROOT_USERNAME=
