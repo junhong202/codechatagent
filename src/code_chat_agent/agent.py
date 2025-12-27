@@ -1,4 +1,4 @@
-"""Updated core chat agent logic with Weaviate backend."""
+"""Updated core chat agent logic with pluggable vector backends (Weaviate/MongoDB)."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +9,7 @@ import logging
 from src.code_chat_agent.indexer import RepositoryIndexer
 from src.code_chat_agent.parser import CodeParser
 from src.code_chat_agent.weaviate_store import WeaviateStore, WeaviateConfig
+from src.code_chat_agent.mongo_store import MongoDBStore, MongoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +37,42 @@ class CodeChatAgent:
         self,
         weaviate_url: str = "http://localhost:8080",
         openai_model: Optional[str] = None,
+        backend: str = "weaviate",
+        mongo_uri: Optional[str] = None,
+        mongo_db: Optional[str] = None,
+        mongo_collection: Optional[str] = None,
+        mongo_vector_index: Optional[str] = None,
+        mongo_use_atlas_search: bool = False,
     ) -> None:
-        """Initialize the chat agent with Weaviate backend."""
+        """Initialize the chat agent with selected vector backend.
+
+        Args:
+            weaviate_url: Weaviate endpoint (if using Weaviate)
+            openai_model: LLM model name
+            backend: "weaviate" or "mongodb"
+            mongo_uri: MongoDB connection URI
+            mongo_db: MongoDB database name
+            mongo_collection: MongoDB collection name
+            mongo_vector_index: Name of the vector index used by `$vectorSearch`
+            mongo_use_atlas_search: Use Atlas `$search` for keyword search
+        """
         self.indexer = RepositoryIndexer([])
         self.parser = CodeParser()
-        
-        # Initialize Weaviate store
-        config = WeaviateConfig(url=weaviate_url)
-        self.vector_store = WeaviateStore(config)
+
+        if backend == "weaviate":
+            config = WeaviateConfig(url=weaviate_url)
+            self.vector_store = WeaviateStore(config)
+        elif backend == "mongodb":
+            mcfg = MongoConfig(
+                uri=mongo_uri or "mongodb://localhost:27017",
+                database=mongo_db or "codechat",
+                collection=mongo_collection or "chunks",
+                vector_index_name=mongo_vector_index or "default",
+                use_atlas_search=mongo_use_atlas_search,
+            )
+            self.vector_store = MongoDBStore(mcfg)
+        else:
+            raise ValueError(f"Unknown backend: {backend}")
         # OpenAI model selection: explicit param -> env var -> default
         self.openai_model = (
             openai_model
@@ -230,6 +259,6 @@ class CodeChatAgent:
         )
 
     def close(self) -> None:
-        """Close connection to Weaviate."""
+        """Close connection to the selected backend."""
         if self.vector_store:
             self.vector_store.close()

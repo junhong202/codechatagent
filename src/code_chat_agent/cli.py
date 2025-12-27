@@ -1,4 +1,7 @@
-"""CLI interface for Code Chat Agent with Weaviate backend."""
+"""CLI interface for Code Chat Agent with selectable backend.
+
+MongoDB is the default local backend; no Mongo-specific CLI flags are required.
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -7,7 +10,7 @@ import warnings
 
 import click
 
-from src.code_chat_agent.agent import CodeChatAgent
+from code_chat_agent.agent import CodeChatAgent
 
 # Suppress ResourceWarnings from gRPC connections
 warnings.filterwarnings("ignore", category=ResourceWarning)
@@ -21,12 +24,19 @@ logging.basicConfig(
 
 @click.group()
 @click.option("--weaviate-url", default="http://localhost:8080", help="Weaviate URL")
+@click.option("--backend", default="mongodb", type=click.Choice(["mongodb", "weaviate"]), help="Vector backend")
 @click.option("--openai-model", default=None, help="OpenAI embedding model to use (overrides OPENAI_MODEL env)")
 @click.pass_context
-def cli(ctx, weaviate_url: str, openai_model: Optional[str] = None) -> None:
+def cli(
+    ctx,
+    weaviate_url: str,
+    backend: str,
+    openai_model: Optional[str] = None,
+) -> None:
     """Code Chat Agent - Search and answer questions across code repositories."""
     ctx.ensure_object(dict)
     ctx.obj["weaviate_url"] = weaviate_url
+    ctx.obj["backend"] = backend
     ctx.obj["openai_model"] = openai_model
 
 
@@ -36,10 +46,17 @@ def cli(ctx, weaviate_url: str, openai_model: Optional[str] = None) -> None:
 def index(ctx, repo_paths: tuple[str, ...]) -> None:
     """Index one or more repositories."""
     click.echo(f"Indexing {len(repo_paths)} repositories...")
-    click.echo(f"Connecting to Weaviate at {ctx.obj['weaviate_url']}...\n")
+    if ctx.obj["backend"] == "weaviate":
+        click.echo(f"Connecting to Weaviate at {ctx.obj['weaviate_url']}...\n")
+    else:
+        click.echo(f"Connecting to MongoDB at mongodb://localhost:27017...\n")
     
     try:
-        with CodeChatAgent(weaviate_url=ctx.obj["weaviate_url"], openai_model=ctx.obj.get("openai_model")) as agent:
+        with CodeChatAgent(
+            weaviate_url=ctx.obj["weaviate_url"],
+            openai_model=ctx.obj.get("openai_model"),
+            backend=ctx.obj["backend"],
+        ) as agent:
             agent.index_repositories([Path(p) for p in repo_paths])
             
             click.echo(f"✓ Successfully indexed all repositories")
@@ -63,7 +80,11 @@ def search(ctx, query: str, top_k: int, language: str, search_type: str) -> None
     click.echo(f"Search type: {search_type}\n")
     
     try:
-        with CodeChatAgent(weaviate_url=ctx.obj["weaviate_url"], openai_model=ctx.obj.get("openai_model")) as agent:
+        with CodeChatAgent(
+            weaviate_url=ctx.obj["weaviate_url"],
+            openai_model=ctx.obj.get("openai_model"),
+            backend=ctx.obj["backend"],
+        ) as agent:
             results = agent.search_code(
                 query,
                 top_k=top_k,
@@ -106,7 +127,11 @@ def ask(ctx, question: str, top_k: int, use_llm: bool, language: str) -> None:
     click.echo(f"Question: {question}\n")
     
     try:
-        with CodeChatAgent(weaviate_url=ctx.obj["weaviate_url"], openai_model=ctx.obj.get("openai_model")) as agent:
+        with CodeChatAgent(
+            weaviate_url=ctx.obj["weaviate_url"],
+            openai_model=ctx.obj.get("openai_model"),
+            backend=ctx.obj["backend"],
+        ) as agent:
             # Search for relevant code
             click.echo("Searching for relevant code...\n")
             search_results = agent.search_code(
@@ -139,12 +164,16 @@ def ask(ctx, question: str, top_k: int, use_llm: bool, language: str) -> None:
 @cli.command()
 @click.pass_context
 def clear(ctx) -> None:
-    """Clear all indexed data from Weaviate."""
+    """Clear all indexed data from the configured backend."""
     if not click.confirm("Are you sure you want to delete all indexed data?"):
         return
     
     try:
-        with CodeChatAgent(weaviate_url=ctx.obj["weaviate_url"], openai_model=ctx.obj.get("openai_model")) as agent:
+        with CodeChatAgent(
+            weaviate_url=ctx.obj["weaviate_url"],
+            openai_model=ctx.obj.get("openai_model"),
+            backend=ctx.obj["backend"],
+        ) as agent:
             agent.vector_store.clear()
             click.echo("✓ Cleared all indexed data")
     except Exception as e:
